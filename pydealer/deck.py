@@ -191,10 +191,10 @@ class Deck(Stack):
         if not isinstance(faces, list) or not isinstance(suits, list):
             raise ValueError('Cannot build a deck with a list of faces and suits')
 
-        self.cards = [Card(face, suit) for face in faces for suit in suits]
+        self.cards = [Card(face, suit, ranks=self.ranks) for face in faces for suit in suits]
 
         if self.jokers:
-            self.cards += [Card(Faces.JOKER, None) for i in range(int(self.jokers))]
+            self.cards += [Card(Faces.JOKER, None, ranks=self.ranks) for i in range(int(self.jokers))]
     
         self.cards = deque(self.cards)
         return self.cards
