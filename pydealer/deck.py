@@ -1,46 +1,22 @@
-#===============================================================================
-# PyDealer - Deck Class
-#-------------------------------------------------------------------------------
-# Version: 1.4.0
-# Updated: 10-01-2015
-# Author: Alex Crawford
-# License: GPLv3
-#===============================================================================
-
-"""
-This module contains the ``Deck`` class. Each ``Deck`` instance contains a full,
-52 card French deck of playing cards upon instantiation. The ``Deck`` class is
-a subclass of the ``Stack`` class, with a few extra/differing methods.
-
-"""
-
-
-#===============================================================================
-# Imports
-#===============================================================================
+# -*- coding: utf-8 -*-
 
 from collections import deque
 
-from pydealer.const import (
-    BOTTOM,
-    DEFAULT_RANKS,
-    TOP
-)
-from pydealer.stack import Stack
-from pydealer.tools import build_cards
+from pydealer.card import Card, Faces, Suits
+from pydealer.stack import Stack, TOP, BOTTOM
+from pydealer.ranks import Ranks
 
-# Dirty little try/except, to make PyDealer work with Python 3.
-try:
-    xrange
-except:
-    xrange = range
-
-
-#===============================================================================
-# Deck Class
-#===============================================================================
 
 class Deck(Stack):
+
+    decks = 1
+    jokers = 0
+    rebuild = False
+    reshuffle = True
+    ranks = None
+    faces = None
+    suits = None
+
     """
     The Deck class, representing the deck that the cards will be in. It is
     a sublcass of Stack, sharing all of the same methods, in addition to a
@@ -54,59 +30,84 @@ class Deck(Stack):
         A list of cards to be the initial contents of the Deck. If provided,
         the deck will not automatically build a new deck. Can be a ``Stack``,
         ``Deck``, or ``list`` instance.
-    :arg bool jokers:
-        Whether or not to include jokers in the deck.
-    :arg int num_jokers:
-        How many jokers to add to the deck.
+    :arg int decks:
+        How many decks should be used. Default: 1
+    :arg int jokers:
+        How many jokers to add to the deck. Default: 0
     :arg bool build:
-        Whether or not to build the deck on instantiation.
+        Whether or not to build the deck on instantiation. Default: True
     :arg bool rebuild:
         Whether or not to rebuild the deck when it runs out of
-        cards due to dealing.
-    :arg bool re_shuffle:
-        Whether or not to shuffle the deck after rebuilding.
+        cards due to dealing. Default: False
+    :arg bool reshuffle:
+        Whether or not to shuffle the deck after rebuilding. Default: True
     :arg dict ranks:
-        The rank dict that will be referenced by the sorting
-        methods etc. Defaults to ``DEFAULT_RANKS``
-
+        The rank class that will be referenced by the sorting
+        methods etc. Default: pydealer.ranks.Ranks
     """
-    def __init__(self, **kwargs):
+
+    def __init__(self,
+                 decks=None,
+                 jokers=None,
+                 ranks=None,
+                 cards=None,
+                 build=True,
+                 rebuild=False,
+                 reshuffle=True,
+                 faces=None,
+                 suits=None):
         """
         Deck constructor method.
-
         """
-        self._cards = deque(kwargs.get("cards", []))
+        if ranks is None:
+            ranks = Ranks()
 
-        self.jokers = kwargs.get("jokers", False)
-        self.num_jokers = kwargs.get("num_jokers", 0)
-        self.rebuild = kwargs.get("rebuild", False)
-        self.re_shuffle = kwargs.get("re_shuffle", False)
-        self.ranks = kwargs.get("ranks", DEFAULT_RANKS)
-        self.decks_used = 0
+        if cards is not None:
+            if decks is not None or jokers is not None:
+                raise ValueError('Invalid combination of parameters for deck instantiation')
 
-        if kwargs.get("build", True):
+            super(Deck, self).__init__(cards=cards, ranks=ranks)
+
+        else:
+            super(Deck, self).__init__(ranks=ranks)
+
+            if decks is not None:
+                if int(decks) < 0:
+                    raise ValueError('Cannot instantiate a Deck with a negative amount of decks')
+
+                self.decks = int(decks)
+
+            if jokers is not None:
+                if int(jokers) < 0:
+                    raise ValueError('Cannot instantiate a Deck with a negative amount of jokers')
+
+                self.jokers = int(jokers)
+
+        if rebuild is not None:
+            self.rebuild = rebuild
+
+        if reshuffle is not None:
+            self.reshuffle = reshuffle
+
+        if faces is not None:
+            if not isinstance(faces, list):
+                raise ValueError('Provided faces must be a list')
+
+            self.faces = faces
+        else:
+            self.faces = Faces()
+
+        if suits is not None:
+            if not isinstance(suits, list):
+                raise ValueError('Provided suits must be a list')
+
+            self.suits = suits
+        else:
+            self.suits = Suits()
+
+        if build:
             self.build()
 
-    def __add__(self, other):
-        """
-        Allows you to add (merge) decks together, with the ``+`` operand.
-
-        :arg other:
-            The other Deck to add to the Deck. Can be a ``Stack`` or ``Deck``
-            instance.
-
-        :returns:
-            A new Deck instance, with the combined cards.
-
-        """
-        try:
-            new_deck = self.__class__(
-                    cards=(list(self.cards) + list(other.cards)), build=False)
-        except:
-            new_deck = self.__class__(
-                    cards=list(self.cards) + other, build=False)
-
-        return new_deck
 
     def __repr__(self):
         """
@@ -118,24 +119,9 @@ class Deck(Stack):
         """
         return "Deck(cards=%r)" % (self.cards)
 
-    def build(self, jokers=False, num_jokers=0):
-        """
-        Builds a standard 52 card French deck of Card instances.
 
-        :arg bool jokers:
-            Whether or not to include jokers in the deck.
-        :arg int num_jokers:
-            The number of jokers to include.
 
-        """
-        jokers = jokers or self.jokers
-        num_jokers = num_jokers or self.num_jokers
-
-        self.decks_used += 1
-
-        self.cards += build_cards(jokers, num_jokers)
-
-    def deal(self, num=1, rebuild=False, shuffle=False, end=TOP):
+    def deal(self, num=1, rebuild=None, shuffle=None, end=TOP):
         """
         Returns a list of cards, which are removed from the deck.
 
@@ -150,15 +136,18 @@ class Deck(Stack):
             or ``BOTTOM`` ("bottom").
 
         :returns:
-            A given number of cards from the deck.
+            A Stack containing the given number of cards from the deck.
 
         """
         _num = num
 
-        rebuild = rebuild or self.rebuild
-        re_shuffle = shuffle or self.re_shuffle
+        if rebuild is None:
+            rebuild = self.rebuild
 
-        self_size = self.size
+        if shuffle is None:
+            reshuffle = self.reshuffle
+
+        self_size = len(self.cards)
 
         if rebuild or num <= self_size:
             dealt_cards = [None] * num
@@ -176,24 +165,36 @@ class Deck(Stack):
                 if self.size == 0:
                     if rebuild:
                         self.build()
-                        if re_shuffle:
+                        if reshuffle:
                             self.shuffle()
                     else:
                         break
 
-        return Stack(cards=dealt_cards)
+        return Stack(cards=dealt_cards, ranks=self.ranks)
 
 
-#===============================================================================
-# Helper Functions
-#===============================================================================
+    def build(self, faces=None, suits=None):
+        """
+        Builds a list containing a full French deck of 52 Card instances.
+    
+        :arg int jokers:
+            The number of jokers to include.
+    
+        :returns:
+            A list containing a full French deck of 52 Card instances, plus
+            Jokers, if applicable.
+        """
 
-def convert_to_deck(stack):
-    """
-    Convert a ``Stack`` to a ``Deck``.
+        faces = faces or self.faces
+        suits = suits or self.suits
 
-    :arg Stack stack:
-        The ``Stack`` instance to convert.
+        if not isinstance(faces, list) or not isinstance(suits, list):
+            raise ValueError('Cannot build a deck with a list of faces and suits')
 
-    """
-    return Deck(list(stack.cards))
+        self.cards = [Card(face, suit) for face in faces for suit in suits]
+
+        if self.jokers:
+            self.cards += [Card(Faces.JOKER, None) for i in range(int(self.jokers))]
+    
+        self.cards = deque(self.cards)
+        return self.cards
