@@ -62,9 +62,9 @@ class Stack(object):
         """
 
         if isinstance(other, list):
-            self.cards = list(self.cards) + other
+            self.cards = deque(list(self.cards) + other)
         elif isinstance(other, Stack):
-            self.cards = list(self.cards) + list(other.cards)
+            self.cards = deque(list(self.cards) + list(other.cards))
         elif isinstance(other, Card):
             self.cards.add(other)
         else:
